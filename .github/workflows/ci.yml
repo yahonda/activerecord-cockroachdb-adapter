@@ -9,7 +9,8 @@ on:
   # Triggers the workflow on pull request events.
   pull_request:
     types: [opened, reopened, synchronize]
-
+  schedule:
+    - cron: 12 13 * * 1 # Weekly
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -19,7 +20,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Since the name of the matrix job depends on the version, we define another job with a more stable name.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # https://www.cockroachlabs.com/docs/releases/release-support-policy
+        crdb: [v24.3, v25.2, v25.4, v26.2]
+        ruby: ["3.4"]
+        rails: ["main"]
+    name: Test (crdb=${{ matrix.crdb }} ruby=${{ matrix.ruby }} rails=${{ matrix.rails }})
+    steps:
+      - name: Set Up Actions
+        uses: actions/checkout@v4
+      - uses: ./.github/actions/test-runner
+        id: test
+        with:
+          crdb: ${{ matrix.crdb }}
+          ruby: ${{ matrix.ruby }}
+        env:
+          RAILS_TAG: ${{ matrix.rails }}
+          JSON_REPORTER: "report.json"
+      - name: Upload Report
+        if: ${{ failure() && steps.test.conclusion == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.crdb }}-${{ matrix.ruby }}-${{ matrix.rails }}
+          path: report.json
+  # Since the name of the matrix job depends on the
+  # version, we define another job with a more stable
+  # name. We also aggregate failed tests to display
+  # in the Github Summary.
   test_results:
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -92,29 +123,3 @@ jobs:
           echo '```json' >>$GITHUB_STEP_SUMMARY
           jq --slurp --compact-output '.' reports/*/report.json >>$GITHUB_STEP_SUMMARY
           echo '```' >>$GITHUB_STEP_SUMMARY
-
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # https://www.cockroachlabs.com/docs/releases/release-support-policy
-        crdb: [v24.3, v25.2, v25.4, v26.2]
-        ruby: ["3.4"]
-    name: Test (crdb=${{ matrix.crdb }} ruby=${{ matrix.ruby }})
-    steps:
-      - name: Set Up Actions
-        uses: actions/checkout@v4
-      - uses: ./.github/actions/test-runner
-        id: test
-        with:
-          crdb: ${{ matrix.crdb }}
-          ruby: ${{ matrix.ruby }}
-        env:
-          JSON_REPORTER: "report.json"
-      - name: Upload Report
-        if: ${{ failure() && steps.test.conclusion == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: report-${{ matrix.crdb }}-${{ matrix.ruby }}
-          path: report.json
