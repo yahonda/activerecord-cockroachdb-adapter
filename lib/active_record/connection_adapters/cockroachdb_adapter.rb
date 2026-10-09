@@ -251,6 +251,10 @@ module ActiveRecord
         false
       end
 
+      def supports_enforced_foreign_keys?
+        false
+      end
+
       def supports_close_prepared?
         true
       end
@@ -324,7 +328,8 @@ module ActiveRecord
         query = <<~SQL
           CREATE TYPE IF NOT EXISTS #{quote_table_name(name)} AS ENUM (#{sql_values});
         SQL
-        internal_exec_query(query).tap { reload_type_map }
+        query_command(query)
+        reload_type_map
       end
 
       class << self
@@ -425,7 +430,7 @@ module ActiveRecord
         #   - gather detailed information about spatial columns. See
         #     `#crdb_column_definitions`
         def column_definitions(table_name)
-          fields = query(<<~SQL, "SCHEMA")
+          fields = query_rows(<<~SQL, "SCHEMA")
               SELECT a.attname, format_type(a.atttypid, a.atttypmod),
                      pg_get_expr(d.adbin, d.adrelid), a.attnotnull, a.atttypid, a.atttypmod,
                      c.collname, NULL AS comment,
@@ -441,6 +446,47 @@ module ActiveRecord
                ORDER BY a.attnum
           SQL
 
+          crdb_column_definitions_for(table_name, fields)
+        end
+
+        # OVERRIDE: same fields as #column_definitions, read for many tables at
+        # once; the table name comes last in each row.
+        def fetch_column_definitions(tables)
+          fetch_by_schema(tables) do |schema, group|
+            rows = query_rows(<<~SQL, "SCHEMA")
+              SELECT a.attname, format_type(a.atttypid, a.atttypmod),
+                     pg_get_expr(d.adbin, d.adrelid), a.attnotnull, a.atttypid, a.atttypmod,
+                     c.collname, NULL AS comment,
+                     attidentity,
+                     attgenerated,
+                     a.attishidden,
+                     r.relname
+              FROM (
+                SELECT DISTINCT ON (cls.relname) cls.oid, cls.relname
+                FROM pg_class cls
+                JOIN pg_namespace n ON n.oid = cls.relnamespace
+                WHERE n.nspname = #{schema}
+                  AND cls.relname IN (#{quoted_table_names(group)})
+                ORDER BY cls.relname, array_position(current_schemas(false), n.nspname)
+              ) r
+              JOIN pg_attribute a ON a.attrelid = r.oid
+              LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+              LEFT JOIN pg_type t ON a.atttypid = t.oid
+              LEFT JOIN pg_collation c ON a.attcollation = c.oid AND a.attcollation <> t.typcollation
+              WHERE a.attnum > 0 AND NOT a.attisdropped
+              ORDER BY r.relname, a.attnum
+            SQL
+            by_name = rows.group_by(&:last)
+
+            group.index_with do |table|
+              fields = rows_for(by_name, table)
+
+              fields.empty? ? column_definitions(table) : crdb_column_definitions_for(table, fields)
+            end
+          end
+        end
+
+        def crdb_column_definitions_for(table_name, fields)
           crdb_fields = crdb_column_definitions(table_name)
 
           # Use regex comparison because if a type is an array it will
@@ -493,7 +539,7 @@ module ActiveRecord
           table = table_name.identifier
           with_schema = " AND c.table_schema = #{quote(table_name.schema)}" if table_name.schema
           fields = \
-          query(<<~SQL, "SCHEMA")
+          query_rows(<<~SQL, "SCHEMA")
             SELECT c.column_name, c.column_comment, c.crdb_sql_type
             FROM information_schema.columns c
             WHERE c.table_name = #{quote(table)}#{with_schema}

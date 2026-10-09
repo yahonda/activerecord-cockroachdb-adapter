@@ -161,10 +161,10 @@ WARNING
           end
         end
 
-        # NOTE: Copy/paste of the `#foreign_keys(table)` method adapted
+        # NOTE: Copy/paste of the `#fetch_foreign_keys(tables)` method adapted
         #   to return every single foreign key in the database.
         def all_foreign_keys
-          fk_info = internal_exec_query(<<~SQL, "SCHEMA")
+          fk_info = query_all(<<~SQL, "SCHEMA")
             SELECT CASE
               WHEN n1.nspname = current_schema()
               THEN ''
