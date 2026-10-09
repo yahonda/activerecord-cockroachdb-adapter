@@ -20,37 +20,42 @@ module ActiveRecord
       module SchemaStatements
         include ActiveRecord::ConnectionAdapters::PostgreSQL::SchemaStatements
 
-        # OVERRIDE(v8.1.1):
+        # OVERRIDE:
         #   - prepend Utils with PostgreSQL::
         #   - handle hidden attributes
-        # Returns an array of indexes for the given table.
-        def indexes(table_name) # :nodoc:
-          scope = quoted_scope(table_name)
+        # Reads the indexes of many tables at once; the table name comes last
+        # in each row so #build_indexes keeps reading columns by position.
+        def fetch_indexes(tables)
+          fetch_by_schema(tables) do |schema, group|
+            rows = query_rows(<<~SQL, "SCHEMA")
+              #{resolved_tables(schema, group)}
+              SELECT distinct i.relname, d.indisunique, d.indkey, pg_get_indexdef(d.indexrelid),
+                              pg_catalog.obj_description(i.oid, 'pg_class') AS comment, d.indisvalid,
+                              ARRAY(
+                                SELECT pg_get_indexdef(d.indexrelid, k + 1, true)
+                                FROM generate_subscripts(d.indkey, 1) AS k
+                                ORDER BY k
+                              ) AS columns,
+                              ARRAY(
+                                SELECT a.attname
+                                FROM pg_attribute a
+                                WHERE a.attrelid = d.indexrelid AND a.attishidden
+                              ) AS hidden_columns,
+                              t.relname
+              FROM tables t
+              INNER JOIN pg_index d ON t.oid = d.indrelid
+              INNER JOIN pg_class i ON d.indexrelid = i.oid
+              WHERE i.relkind IN ('i', 'I')
+                AND d.indisprimary = 'f'
+              ORDER BY i.relname
+            SQL
+            by_name = rows.group_by(&:last)
 
-          result = query(<<~SQL, "SCHEMA")
-            SELECT distinct i.relname, d.indisunique, d.indkey, pg_get_indexdef(d.indexrelid),
-                            pg_catalog.obj_description(i.oid, 'pg_class') AS comment, d.indisvalid,
-                            ARRAY(
-                              SELECT pg_get_indexdef(d.indexrelid, k + 1, true)
-                              FROM generate_subscripts(d.indkey, 1) AS k
-                              ORDER BY k
-                            ) AS columns,
-                            ARRAY(
-                              SELECT a.attname
-                              FROM pg_attribute a
-                              WHERE a.attrelid = d.indexrelid AND a.attishidden
-                            ) AS hidden_columns
-            FROM pg_class t
-            INNER JOIN pg_index d ON t.oid = d.indrelid
-            INNER JOIN pg_class i ON d.indexrelid = i.oid
-            LEFT JOIN pg_namespace n ON n.oid = t.relnamespace
-            WHERE i.relkind IN ('i', 'I')
-              AND d.indisprimary = 'f'
-              AND t.relname = #{scope[:name]}
-              AND n.nspname = #{scope[:schema]}
-            ORDER BY i.relname
-          SQL
+            group.index_with { |table| build_indexes(table, rows_for(by_name, table)) }
+          end
+        end
 
+        def build_indexes(table_name, result)
           unquote = -> (column) {
             PostgreSQL::Utils.unquote_identifier(column.strip.gsub('""', '"'))
           }
@@ -130,19 +135,24 @@ module ActiveRecord
           end
         end
 
-        # OVERRIDE(v8.1.1): handle hidden attributes
-        def primary_keys(table_name)
-          query_values(<<~SQL, "SCHEMA")
-            SELECT a.attname
-            FROM pg_index i
-            JOIN pg_attribute a
-              ON a.attrelid = i.indrelid
-              AND a.attnum = ANY(i.indkey)
-              AND NOT a.attishidden
-            WHERE i.indrelid = #{quote(quote_table_name(table_name))}::regclass
-              AND i.indisprimary
-            ORDER BY array_position(i.indkey, a.attnum)
-          SQL
+        # OVERRIDE: handle hidden attributes
+        def fetch_primary_keys(tables)
+          fetch_by_schema(tables) do |schema, group|
+            by_name = query_all(<<~SQL, "SCHEMA").group_by { |row| row["table_name"] }
+              #{resolved_tables(schema, group)}
+              SELECT t.relname AS table_name, a.attname AS column_name
+              FROM pg_constraint c
+              JOIN tables t ON c.conrelid = t.oid
+              JOIN pg_attribute a
+                ON a.attrelid = c.conrelid
+                AND a.attnum = ANY(c.conkey)
+                AND NOT a.attishidden
+              WHERE c.contype = 'p'
+              ORDER BY t.relname, array_position(c.conkey, a.attnum)
+            SQL
+
+            group.index_with { |table| rows_for(by_name, table).map { |row| row["column_name"] } }
+          end
         end
 
         # OVERRIDE: CockroachDB does not support deferrable constraints.
@@ -161,7 +171,7 @@ module ActiveRecord
         def pk_and_sequence_for(table) # :nodoc:
           # First try looking for a sequence with a dependency on the
           # given table's primary key.
-          result = query(<<~SQL, "SCHEMA")[0]
+          result = query_rows(<<~SQL, "SCHEMA")[0]
             SELECT attr.attname, nsp.nspname, seq.relname
             FROM pg_class      seq,
                  pg_attribute  attr,
@@ -182,7 +192,7 @@ module ActiveRecord
           SQL
 
           if result.nil? || result.empty?
-            result = query(<<~SQL, "SCHEMA")[0]
+            result = query_rows(<<~SQL, "SCHEMA")[0]
               SELECT attr.attname, nsp.nspname,
                 CASE
                   WHEN pg_get_expr(def.adbin, def.adrelid) !~* 'nextval' THEN NULL
@@ -213,73 +223,53 @@ module ActiveRecord
           nil
         end
 
-        # OVERRIDE(v8.1.1):
-        #   - Replaces t2.oid::regclass::text with t2.relname
-        #     since this is more efficient in CockroachDB.
+        # OVERRIDE:
         #   - prepend schema name to relname (see `AS to_table`)
         #   - handle hidden attributes.
         #
         # NOTE: If you edit this method, you'll need to edit
         #   the `#all_foreign_keys` method as well.
-        def foreign_keys(table_name)
-          scope = quoted_scope(table_name)
-          fk_info = internal_exec_query(<<~SQL, "SCHEMA", allow_retry: true, materialize_transactions: false)
-            SELECT CASE
-              WHEN n2.nspname = current_schema()
-              THEN ''
-              ELSE n2.nspname || '.'
-            END || t2.relname AS to_table,
-            c.conname AS name, c.confupdtype AS on_update, c.confdeltype AS on_delete, c.convalidated AS valid, c.condeferrable AS deferrable, c.condeferred AS deferred, c.conrelid, c.confrelid,
-              (
-                SELECT array_agg(a.attname ORDER BY idx)
-                FROM (
-                  SELECT idx, c.conkey[idx] AS conkey_elem
-                  FROM generate_subscripts(c.conkey, 1) AS idx
-                ) indexed_conkeys
-                JOIN pg_attribute a ON a.attrelid = t1.oid
-                AND a.attnum = indexed_conkeys.conkey_elem
-                AND NOT a.attishidden
-              ) AS conkey_names,
-              (
-                SELECT array_agg(a.attname ORDER BY idx)
-                FROM (
-                  SELECT idx, c.confkey[idx] AS confkey_elem
-                  FROM generate_subscripts(c.confkey, 1) AS idx
-                ) indexed_confkeys
-                JOIN pg_attribute a ON a.attrelid = t2.oid
-                AND a.attnum = indexed_confkeys.confkey_elem
-                AND NOT a.attishidden
-              ) AS confkey_names
-            FROM pg_constraint c
-            JOIN pg_class t1 ON c.conrelid = t1.oid
-            JOIN pg_class t2 ON c.confrelid = t2.oid
-            JOIN pg_namespace n1 ON t1.relnamespace = n1.oid
-            JOIN pg_namespace n2 ON t2.relnamespace = n2.oid
-            WHERE c.contype = 'f'
-              AND t1.relname = #{scope[:name]}
-              AND n1.nspname = #{scope[:schema]}
-            ORDER BY c.conname
-          SQL
+        def fetch_foreign_keys(tables)
+          fetch_by_schema(tables) do |schema, group|
+            rows = query_all(<<~SQL, "SCHEMA")
+              #{resolved_tables(schema, group)}
+              SELECT t.relname AS from_table,
+              CASE
+                WHEN n2.nspname = current_schema()
+                THEN ''
+                ELSE n2.nspname || '.'
+              END || t2.relname AS to_table,
+              c.conname AS name, c.confupdtype AS on_update, c.confdeltype AS on_delete, c.convalidated AS valid, c.condeferrable AS deferrable, c.condeferred AS deferred, c.conrelid, c.confrelid,
+                (
+                  SELECT array_agg(a.attname ORDER BY idx)
+                  FROM (
+                    SELECT idx, c.conkey[idx] AS conkey_elem
+                    FROM generate_subscripts(c.conkey, 1) AS idx
+                  ) indexed_conkeys
+                  JOIN pg_attribute a ON a.attrelid = t.oid
+                  AND a.attnum = indexed_conkeys.conkey_elem
+                  AND NOT a.attishidden
+                ) AS conkey_names,
+                (
+                  SELECT array_agg(a.attname ORDER BY idx)
+                  FROM (
+                    SELECT idx, c.confkey[idx] AS confkey_elem
+                    FROM generate_subscripts(c.confkey, 1) AS idx
+                  ) indexed_confkeys
+                  JOIN pg_attribute a ON a.attrelid = t2.oid
+                  AND a.attnum = indexed_confkeys.confkey_elem
+                  AND NOT a.attishidden
+                ) AS confkey_names
+              FROM pg_constraint c
+              JOIN tables t ON c.conrelid = t.oid
+              JOIN pg_class t2 ON c.confrelid = t2.oid
+              JOIN pg_namespace n2 ON t2.relnamespace = n2.oid
+              WHERE c.contype = 'f'
+              ORDER BY c.conname
+            SQL
+            by_name = rows.group_by { |row| row["from_table"] }
 
-          fk_info.map do |row|
-            to_table = PostgreSQL::Utils.unquote_identifier(row["to_table"])
-
-            column = decode_string_array(row["conkey_names"])
-            primary_key = decode_string_array(row["confkey_names"])
-
-            options = {
-              column: column.size == 1 ? column.first : column,
-              name: row["name"],
-              primary_key: primary_key.size == 1 ? primary_key.first : primary_key
-            }
-
-            options[:on_delete] = extract_foreign_key_action(row["on_delete"])
-            options[:on_update] = extract_foreign_key_action(row["on_update"])
-            options[:deferrable] = extract_constraint_deferrable(row["deferrable"], row["deferred"])
-
-            options[:validate] = row["valid"]
-
-            ForeignKeyDefinition.new(table_name, to_table, options)
+            group.index_with { |table| build_foreign_keys(table, rows_for(by_name, table)) }
           end
         end
 
@@ -290,46 +280,31 @@ module ActiveRecord
           nil
         end
 
-        # OVERRIDE(v8.1.1): handle hidden attributes
+        # OVERRIDE: handle hidden attributes
         #
-        # Returns an array of unique constraints for the given table.
-        # The unique constraints are represented as UniqueConstraintDefinition objects.
-        def unique_constraints(table_name)
-          scope = quoted_scope(table_name)
+        # Reads the unique constraints of many tables at once.
+        def fetch_unique_constraints(tables)
+          fetch_by_schema(tables) do |schema, group|
+            rows = query_all(<<~SQL, "SCHEMA")
+              #{resolved_tables(schema, group)}
+              SELECT t.relname AS table_name, c.conname, c.conrelid, c.condeferrable, c.condeferred, pg_get_constraintdef(c.oid) AS constraintdef,
+              (
+                SELECT array_agg(a.attname ORDER BY idx)
+                FROM (
+                  SELECT idx, c.conkey[idx] AS conkey_elem
+                  FROM generate_subscripts(c.conkey, 1) AS idx
+                ) indexed_conkeys
+                JOIN pg_attribute a ON a.attrelid = t.oid
+                AND a.attnum = indexed_conkeys.conkey_elem
+                AND NOT a.attishidden
+              ) AS conkey_names
+              FROM pg_constraint c
+              JOIN tables t ON c.conrelid = t.oid
+              WHERE c.contype = 'u'
+            SQL
+            by_name = rows.group_by { |row| row["table_name"] }
 
-          unique_info = internal_exec_query(<<~SQL, "SCHEMA", allow_retry: true, materialize_transactions: false)
-            SELECT c.conname, c.conrelid, c.condeferrable, c.condeferred, pg_get_constraintdef(c.oid) AS constraintdef,
-            (
-              SELECT array_agg(a.attname ORDER BY idx)
-              FROM (
-                SELECT idx, c.conkey[idx] AS conkey_elem
-                FROM generate_subscripts(c.conkey, 1) AS idx
-              ) indexed_conkeys
-              JOIN pg_attribute a ON a.attrelid = t.oid
-              AND a.attnum = indexed_conkeys.conkey_elem
-              AND NOT a.attishidden
-            ) AS conkey_names
-            FROM pg_constraint c
-            JOIN pg_class t ON c.conrelid = t.oid
-            JOIN pg_namespace n ON n.oid = c.connamespace
-            WHERE c.contype = 'u'
-              AND t.relname = #{scope[:name]}
-              AND n.nspname = #{scope[:schema]}
-          SQL
-
-          unique_info.map do |row|
-            columns = decode_string_array(row["conkey_names"])
-
-            nulls_not_distinct = row["constraintdef"].start_with?("UNIQUE NULLS NOT DISTINCT")
-            deferrable = extract_constraint_deferrable(row["condeferrable"], row["condeferred"])
-
-            options = {
-              name: row["conname"],
-              nulls_not_distinct: nulls_not_distinct,
-              deferrable: deferrable
-            }
-
-            UniqueConstraintDefinition.new(table_name, columns, options)
+            group.index_with { |table| build_unique_constraints(table, rows_for(by_name, table)) }
           end
         end
 

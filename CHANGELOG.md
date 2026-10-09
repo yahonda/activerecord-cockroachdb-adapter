@@ -2,6 +2,8 @@
 
 ## Ongoing
 
+- Follow Rails main (8.2.0.alpha): use `query_all` / `query_rows` / `query_command` in place of the removed `internal_exec_query` and `query`, read schema metadata for many tables at once, and declare `NOT ENFORCED` foreign keys unsupported ([#393](https://github.com/cockroachdb/activerecord-cockroachdb-adapter/issues/393))
+
 ## 8.1.2 - 2026-09-25
 
 - Verified compatibility with Rails 8.1.4 ([#407](https://github.com/cockroachdb/activerecord-cockroachdb-adapter/pull/407))
