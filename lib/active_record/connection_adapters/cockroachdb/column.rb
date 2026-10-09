@@ -102,6 +102,20 @@ module ActiveRecord
           super
         end
 
+        # The JSON schema cache cannot hold the RGeo feature class, so it
+        # carries the geometric type by name.
+        def as_schema_json
+          data = super
+          data["geometric_type"] = @geometric_type&.type_name
+          data
+        end
+
+        def init_from_schema_json(coder, references)
+          coder = coder.merge("geometric_type" => RGeo::ActiveRecord.geometric_type_from_name(coder["geometric_type"]))
+          coder["limit"] = coder["limit"].transform_keys(&:to_sym) if coder["limit"].is_a?(Hash)
+          super
+        end
+
         # TODO: add tests (see #390)
         def ==(other)
           other.is_a?(Column) &&

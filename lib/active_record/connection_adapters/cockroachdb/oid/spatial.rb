@@ -27,20 +27,17 @@ module ActiveRecord
           #   "geometry(Geography,4326)"
           def initialize(oid, sql_type)
             super()
-            @sql_type = sql_type.freeze
-            @factory_attrs = self.class
-              .parse_sql_type(sql_type)
-              .then { |geo_type, srid, has_z, has_m|
-                {
-                  geo_type: geo_type.underscore.freeze,
-                  srid: srid.freeze,
-                  has_z: has_z.freeze,
-                  has_m: has_m.freeze,
-                  sql_type: type.to_s.freeze
-                }
-              }
-              .freeze
+            init_from_sql_type(sql_type)
           end
+
+          def as_schema_json
+            { "sql_type" => @sql_type }
+          end
+
+          def init_from_schema_json(coder, references)
+            init_from_sql_type(coder["sql_type"])
+          end
+
           protected attr_reader :sql_type, :factory_attrs
 
           # sql_type: geometry, geometry(Point), geometry(Point,4326), ...
@@ -112,6 +109,22 @@ module ActiveRecord
           end
 
           private
+
+          def init_from_sql_type(sql_type)
+            @sql_type = sql_type.freeze
+            @factory_attrs = self.class
+              .parse_sql_type(sql_type)
+              .then { |geo_type, srid, has_z, has_m|
+                {
+                  geo_type: geo_type.underscore.freeze,
+                  srid: srid.freeze,
+                  has_z: has_z.freeze,
+                  has_m: has_m.freeze,
+                  sql_type: type.to_s.freeze
+                }
+              }
+              .freeze
+          end
 
           def cast_value(value)
             return if value.nil?
