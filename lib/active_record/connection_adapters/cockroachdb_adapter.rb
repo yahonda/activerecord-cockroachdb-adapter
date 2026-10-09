@@ -40,6 +40,13 @@ require_relative "../../version"
 
 require_relative "../relation/query_methods_ext"
 
+ActiveRecord::ConnectionAdapters::JSONSchemaCacheSerializer.register(
+  "cockroachdb_column", ActiveRecord::ConnectionAdapters::CockroachDB::Column
+)
+ActiveRecord::ConnectionAdapters::JSONSchemaCacheSerializer.register(
+  "cockroachdb_spatial", ActiveRecord::ConnectionAdapters::CockroachDB::OID::Spatial
+)
+
 # Run to ignore spatial tables that will break schemna dumper.
 # Defined in ./setup.rb
 ActiveRecord::ConnectionAdapters::CockroachDB.initial_setup
