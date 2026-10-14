@@ -37,6 +37,7 @@ if ActiveRecord::Base.with_connection(&:database_version) < 25_01_00
   exclude :test_clears_warnings_after_handling_non_execute_query, do_needed
   exclude :test_clears_warnings_after_non_execute_warning_action_raises, do_needed
   exclude :test_handles_warnings_after_non_execute_query_raises, do_needed
+  exclude :test_query_intent_defers_warnings_until_result_is_observed, do_needed
 end
 
 exclude :test_translate_no_connection_exception_to_not_established, "CRDB doesn't implement pg_terminate_backend()"
@@ -60,4 +61,3 @@ exclude :test_idle_in_transaction_timeout_preserves_typed_exception, "CockroachD
 exclude :test_insert_uses_schema_cache_with_insert_returning_disabled, "CockroachDB does not support partitioned tables."
 exclude :test_money_decoding_disabled, "The money type is not implemented in CockroachDB. See https://github.com/cockroachdb/cockroach/issues/41578."
 exclude :test_money_decoding_enabled, "The money type is not implemented in CockroachDB. See https://github.com/cockroachdb/cockroach/issues/41578."
-exclude :test_query_intent_defers_warnings_until_result_is_observed, "CockroachDB v24.3 does not support DO blocks."
