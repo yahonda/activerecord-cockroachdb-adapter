@@ -9,6 +9,4 @@ test "#resolve raises if the adapter is using the pre 7.2 adapter registration A
     "Database configuration specifies nonexistent 'fake_legacy' adapter. Available adapters are: abstract, cockroachdb, fake, mysql2, postgresql, sqlite3, trilogy. Ensure that the adapter is spelled correctly in config/database.yml and that you've added the necessary adapter gem to your Gemfile if it's not in the list of available adapters.",
     exception.message
   )
-ensure
-  ActiveRecord::ConnectionAdapters.instance_variable_get(:@adapters).delete("fake_legacy")
 end
