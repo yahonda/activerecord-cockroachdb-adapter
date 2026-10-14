@@ -1,0 +1,5 @@
+exclude :test_does_not_dump_enum_types_that_are_extension_members, "CockroachDB does not support ALTER EXTENSION ... ADD; the leftover objects also break PostgresqlInvertibleMigrationTest."
+exclude :test_does_not_dump_objects_that_are_extension_members_in_other_schemas, "CockroachDB does not support ALTER EXTENSION ... ADD; the leftover objects also break PostgresqlInvertibleMigrationTest."
+exclude :test_does_not_dump_schemas_that_are_extension_members, "CockroachDB does not support ALTER EXTENSION ... ADD; the leftover objects also break PostgresqlInvertibleMigrationTest."
+exclude :test_does_not_dump_tables_that_are_extension_members, "CockroachDB does not support ALTER EXTENSION ... ADD; the leftover objects also break PostgresqlInvertibleMigrationTest."
+exclude :test_extension_member_tables_are_still_visible_to_the_connection, "CockroachDB does not support ALTER EXTENSION ... ADD; the leftover objects also break PostgresqlInvertibleMigrationTest."

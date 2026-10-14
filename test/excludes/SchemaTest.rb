@@ -47,3 +47,4 @@ module Ext
   end
 end
 prepend Ext
+exclude :test_constraints_for_a_name_in_two_schemas_read_the_first_on_the_search_path, "CockroachDB does not support exclusion constraints (USING gist)."

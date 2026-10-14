@@ -45,3 +45,19 @@ exclude :test_disable_extension_without_schema, ExcludeMessage::NO_HSTORE
 exclude :test_extensions_omits_current_schema_name, ExcludeMessage::NO_HSTORE
 exclude :test_extensions_includes_non_current_schema_name, ExcludeMessage::NO_HSTORE
 exclude :test_disable_extension_with_schema, ExcludeMessage::NO_HSTORE
+exclude :test_bulk_loads_domains_after_first_unknown_oid_lookup, "CockroachDB does not support CREATE DOMAIN."
+exclude :test_load_additional_types_cascades_dependency_lookups, "CockroachDB does not support CREATE DOMAIN."
+exclude :test_load_additional_types_cascades_dependency_lookups_after_initial_bulk_load, "CockroachDB does not support CREATE DOMAIN."
+exclude :test_queries_executed_on_fresh_connection_through_first_select, "The CockroachDB adapter issues a different set of queries on a fresh connection."
+exclude :test_queries_executed_on_fresh_connection_with_all_settings_skipped, "The CockroachDB adapter issues a different set of queries on a fresh connection."
+exclude :test_queries_executed_on_fresh_connection_with_first_custom_type_lookup, "The CockroachDB adapter issues a different set of queries on a fresh connection."
+exclude :test_queries_executed_on_fresh_connection_with_two_multi_oid_type_lookups, "The CockroachDB adapter issues a different set of queries on a fresh connection."
+exclude :test_configure_connection_skips_redundant_set_via_downcase_fallback, "The CockroachDB adapter issues a different set of queries on a fresh connection."
+exclude :test_configure_connection_variables_are_set, "CockroachDB reports statement_timeout as \"5000\" (milliseconds) instead of \"5s\"."
+exclude :test_schema_search_path_uses_parameter_status_on_pg18, "CockroachDB reports server_version 13 before v26.3, so the PostgreSQL 18 parameter_status path is not used."
+exclude :test_extensions_omits_schema_fixed_by_the_control_file, "CockroachDB does not provide the plpgsql extension."
+exclude :test_idle_in_transaction_timeout_preserves_typed_exception, "CockroachDB drops the idle connection with an I/O error instead of the PostgreSQL FATAL error the test expects."
+exclude :test_insert_uses_schema_cache_with_insert_returning_disabled, "CockroachDB does not support partitioned tables."
+exclude :test_money_decoding_disabled, "The money type is not implemented in CockroachDB. See https://github.com/cockroachdb/cockroach/issues/41578."
+exclude :test_money_decoding_enabled, "The money type is not implemented in CockroachDB. See https://github.com/cockroachdb/cockroach/issues/41578."
+exclude :test_query_intent_defers_warnings_until_result_is_observed, "CockroachDB v24.3 does not support DO blocks."

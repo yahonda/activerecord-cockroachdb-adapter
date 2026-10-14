@@ -5,3 +5,4 @@ no_options = "Explain options are not yet supported by this adapter. See https:/
 exclude :test_explain_with_options_as_symbols, no_options
 exclude :test_explain_with_options_as_strings, no_options
 exclude :test_explain_options_with_eager_loading, no_options
+exclude :test_explain_format_option, "CockroachDB does not support EXPLAIN (FORMAT ...)."

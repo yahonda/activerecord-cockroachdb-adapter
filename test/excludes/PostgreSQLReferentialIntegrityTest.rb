@@ -16,3 +16,5 @@ exclude :test_only_catch_active_record_errors_others_bubble_up,
 exclude :test_all_foreign_keys_valid_having_foreign_keys_with_partitioned_table,
     "CockroachDB does not support PostgreSQL's declarative partitioning " \
     "(CREATE TABLE ... PARTITION OF)."
+exclude :test_check_all_foreign_keys_valid_detects_violation_in_non_search_path_schema_shadowed_by_same_named_table, "CockroachDB does not support DISABLE TRIGGER."
+exclude :test_re_enables_triggers_when_the_block_raises, "CockroachDB does not support ENABLE/DISABLE TRIGGER."
