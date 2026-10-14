@@ -1,1 +1,0 @@
-exclude :test_concurrent_insert_with_processes, "Rails 8.2 no longer issues ROLLBACK after a COMMIT fails with a serialization failure (rails/rails#56717), so the ROLLBACK assertion no longer shows a retry. The test also depends on the transactions overlapping, which they no longer reliably do on Rails main."
