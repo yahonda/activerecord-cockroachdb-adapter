@@ -99,7 +99,7 @@ jobs:
       fail-fast: false
       matrix:
         # https://www.cockroachlabs.com/docs/releases/release-support-policy
-        crdb: [v24.3, v25.2, v25.4, v26.2]
+        crdb: [v24.3, v25.2, v25.4, v26.2, v26.3]
         ruby: ["3.4"]
     name: Test (crdb=${{ matrix.crdb }} ruby=${{ matrix.ruby }})
     steps:
