@@ -169,6 +169,19 @@ module ActiveRecord
       undef :postgresql_version
       alias :cockroachdb_version :database_version
 
+      # CockroachDB accepts a connection to a database that does not exist
+      # and only fails once a query reads the catalog.
+      def database_exists?
+        connect!
+        query_value("SELECT 1 FROM pg_catalog.pg_database WHERE datname = current_database()", "SCHEMA")
+        true
+      rescue ActiveRecord::NoDatabaseError
+        false
+      rescue ActiveRecord::StatementInvalid => error
+        raise unless error.cause.is_a?(::PG::InvalidCatalogName)
+        false
+      end
+
       def supports_nulls_not_distinct?
         # https://github.com/cockroachdb/cockroach/issues/115836
         false
