@@ -101,9 +101,8 @@ WARNING
             already_inserted_foreign_keys.any? { |fk| fk.from_table == foreign_key.from_table && fk.options[:name] == foreign_key.options[:name] }
           end
           statements = foreign_keys_to_add.map do |foreign_key|
-            options = foreign_key_options(foreign_key.from_table, foreign_key.to_table, foreign_key.options)
             at = create_alter_table foreign_key.from_table
-            at.add_foreign_key foreign_key.to_table, options
+            at.add_foreign_key foreign_key.to_table, **foreign_key.options
 
             schema_creation.accept(at)
           end

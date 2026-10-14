@@ -292,7 +292,7 @@ module ActiveRecord
         # See https://www.cockroachlabs.com/docs/stable/schema-locked
         variables = @config.fetch(:variables, {}).stringify_keys
         if database_version >= 25_03_00 && !variables.key?("create_table_with_schema_locked")
-          internal_execute("SET create_table_with_schema_locked = false", "SCHEMA")
+          query_command("SET create_table_with_schema_locked = false", "SCHEMA")
         end
 
       # This rescue flow appears in new_client, but it is needed here as well
@@ -587,8 +587,9 @@ module ActiveRecord
           if @config[:use_follower_reads_for_type_introspection]
             initializer = OID::TypeMapInitializer.new(type_map)
             load_types_queries_with_aost(initializer, oids) do |query|
-              records = internal_execute(query, "SCHEMA", [], allow_retry: true, materialize_transactions: false)
-              initializer.run(records)
+              intent = internal_build_intent(query, "SCHEMA", [], allow_retry: true, materialize_transactions: false)
+              intent.execute!
+              initializer.run(intent.raw_result.to_a)
             end
           else
             super
@@ -644,8 +645,9 @@ module ActiveRecord
               FROM pg_type as t AS OF SYSTEM TIME '-10s'
               WHERE t.typname IN (%s)
             SQL
-            result = internal_execute(query, "SCHEMA", [], allow_retry: true, materialize_transactions: false)
-            coders = result.filter_map { |row| construct_coder(row, coders_by_name[row["typname"]]) }
+            intent = internal_build_intent(query, "SCHEMA", [], allow_retry: true, materialize_transactions: false)
+            intent.execute!
+            coders = intent.raw_result.filter_map { |row| construct_coder(row, coders_by_name[row["typname"]]) }
 
             map = PG::TypeMapByOid.new
             coders.each { |coder| map.add_coder(coder) }
