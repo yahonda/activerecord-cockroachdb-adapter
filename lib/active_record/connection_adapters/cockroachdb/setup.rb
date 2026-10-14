@@ -18,7 +18,7 @@ module ActiveRecord # :nodoc:
   module ConnectionAdapters # :nodoc:
     module CockroachDB  # :nodoc:
       def self.initial_setup
-        ::ActiveRecord::SchemaDumper.ignore_tables |= %w[
+        ::ActiveRecord.schema_ignored_tables |= %w[
           geography_columns
           geometry_columns
           layer

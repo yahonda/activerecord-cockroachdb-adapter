@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "cases/helper"
+require "active_support/core_ext/object/with"
 require "active_record/tasks/database_tasks"
 require "active_record/connection_adapters/cockroachdb/database_tasks"
 
@@ -30,11 +31,7 @@ module ActiveRecord
         ActiveRecord::Base.lease_connection.execute(<<~SQL)
           CREATE TYPE IF NOT EXISTS status AS ENUM ('open', 'closed', 'inactive');
         SQL
-        assert_called(
-          ActiveRecord::SchemaDumper,
-          :ignore_tables,
-          returns: ["accounts", "articles"]
-        ) do
+        ActiveRecord.with(schema_ignored_tables: ["accounts", "articles"]) do
           ActiveRecord::Tasks::DatabaseTasks.structure_dump(config, @filename)
         end
       ensure

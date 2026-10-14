@@ -13,6 +13,6 @@ class SpatialSetupTest < ActiveRecord::PostgreSQLTestCase
       spatial_ref_sys
       topology
     ]
-    assert_equal expect_to_ignore, ::ActiveRecord::SchemaDumper.ignore_tables
+    assert_equal expect_to_ignore, ::ActiveRecord.schema_ignored_tables
   end
 end

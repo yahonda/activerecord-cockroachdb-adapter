@@ -47,16 +47,14 @@ module ActiveRecord
                 conn.execute("SHOW CREATE ALL #{object_kind}").each_row { file.puts _1 }
               end
 
-              ignore_tables = ActiveRecord::SchemaDumper.ignore_tables.to_set
-
               conn.execute("SHOW CREATE ALL TABLES").each_row do |(sql)|
                 if sql.start_with?("CREATE")
                   table_name = sql[/CREATE TABLE (?:.*?\.)?\"?(.*?)[\" ]/, 1]
-                  next if ignore_tables.member?(table_name)
+                  next if ActiveRecord.schema_ignored_table?(table_name)
                 elsif sql.start_with?("ALTER")
                   table_name = sql[/ALTER TABLE (?:.*?\.)?\"?(.*?)[\" ]/, 1]
                   ref_table_name = sql[/REFERENCES (?:.*?\.)?\"?(.*?)[\" ]/, 1]
-                  next if ignore_tables.member?(table_name) || ignore_tables.member?(ref_table_name)
+                  next if ActiveRecord.schema_ignored_table?(table_name) || ActiveRecord.schema_ignored_table?(ref_table_name)
                 end
 
                 file.puts sql

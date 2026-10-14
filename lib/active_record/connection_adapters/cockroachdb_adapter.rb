@@ -169,11 +169,6 @@ module ActiveRecord
       undef :postgresql_version
       alias :cockroachdb_version :database_version
 
-      def supports_datetime_with_precision?
-        # https://github.com/cockroachdb/cockroach/pull/111400
-        true
-      end
-
       def supports_nulls_not_distinct?
         # https://github.com/cockroachdb/cockroach/issues/115836
         false
