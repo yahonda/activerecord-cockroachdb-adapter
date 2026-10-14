@@ -195,6 +195,7 @@ module ActiveRecord
       def supports_native_partitioning?
         false
       end
+      deprecate :supports_native_partitioning?, deprecator: ActiveRecord.deprecator
 
       def supports_ddl_transactions?
         false
